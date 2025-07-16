@@ -1,0 +1,91 @@
+# -*- org-confirm-babel-evaluate: nil -*-
+#+STARTUP: overview
+
+book: Programming in Haskell - Graham Hutton
+
+* chapter 1
+** 3
+#+begin_src haskell :compile yes
+  module Main where
+
+  myProduct [] = 1
+  myProduct (x:xs) = x * (myProduct xs)
+
+  main :: IO ()
+  main =
+    putStrLn (show (myProduct [2,3,4]))
+#+end_src
+
+#+RESULTS:
+: 24
+
+** 4
+#+begin_src haskell :compile yes
+  module Main where
+
+  qsort []     = []
+  qsort (x:xs) = qsort larger ++ [x] ++ qsort smaller
+                 where
+                   smaller = [a | a <- xs, a <= x]
+                   larger  = [b | b <- xs, b > x]
+
+  main :: IO ()
+  main =
+    putStrLn (show (qsort [2,2,3,1,1]))
+
+#+end_src
+
+#+RESULTS:
+| [3 | 2 | 2 | 1 | 1] |
+** 5
+#+begin_src haskell :compile yes
+  module Main where
+
+  qsort []     = []
+  qsort (x:xs) = qsort smaller ++ [x] ++ qsort larger
+                 where
+                   smaller = [a | a <- xs, a < x]
+                   larger  = [b | b <- xs, b > x]
+
+  main :: IO ()
+  main =
+    putStrLn (show (qsort [2,2,3,1,1]))
+
+#+end_src
+
+#+RESULTS:
+| [1 | 2 | 3] |
+
+At first I thought it would remove only the duplicates of the first element of the list. But reading the output of the program, I realise that it will remove duplicates of the first element of each sublist processed.
+
+#+begin_example
+[2, 2, 3, 1, 1]
+
+[1, 1] ++ [2] ++ [3]
+
+([] ++ [1] ++ []) ++ [2] ++ [3]
+
+[1] ++ [2] ++ [3]
+
+[1, 2] ++ [3]
+
+[1, 2, 3]
+#+end_example
+
+* chapter 2
+** 3
+#+begin_src haskell :compile yes :results output
+  module Main where
+
+  n = a `div` (length xs)
+    where
+      a  = 10
+      xs = [1,2,3,4,5]
+
+  main :: IO ()
+  main =
+    putStrLn (show n)
+#+end_src
+
+#+RESULTS:
+: 2
