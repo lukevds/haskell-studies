@@ -89,3 +89,71 @@ At first I thought it would remove only the duplicates of the first element of t
 
 #+RESULTS:
 : 2
+
+* chapter 3
+** 3
+#+begin_src haskell :results none
+  second :: [a] -> a
+  swap :: (t1, t2) -> (t2, t1)
+  pair x y :: t1 -> t2 -> (t1, t2)
+  double x :: Num a => a -> a
+  palindrome xs :: [a] -> Bool
+  twice :: (t1 -> t2) -> t1 -> t2
+#+end_src
+
+** 4
+#+begin_src haskell :results output
+  second xs = head (tail xs)
+  :type second
+#+end_src
+
+#+RESULTS:
+: second :: [a] -> a
+
+#+begin_src haskell :results output
+  swap (x,y) = (y,x)
+  :type swap
+#+end_src
+
+#+RESULTS:
+: swap :: (b, a) -> (a, b)
+
+#+begin_src haskell :results output
+  pair x y = (x,y)
+  :type pair
+#+end_src
+
+#+RESULTS:
+: pair :: a -> b -> (a, b)
+
+#+begin_src haskell :results output
+  double x = x * 2
+  :type double
+#+end_src
+
+#+RESULTS:
+: double :: Num a => a -> a
+
+#+begin_src haskell :results output
+  palindrome xs = reverse xs == xs
+  :type palindrome
+#+end_src
+
+#+RESULTS:
+: palindrome :: Eq a => [a] -> Bool
+❌
+Forgot to take into account that elements of the list have to have a type that is instance of =Eq=.
+
+#+begin_src haskell :results output
+  twice f x = f (f x)
+  :type twice
+#+end_src
+
+#+RESULTS:
+: twice :: (t -> t) -> t -> t
+
+❌
+If =f= is going to be applied to =f x=, the type of the output of =f= necessarily has to be the same as the input.
+
+** 5
+Function types encode the types of the inputs and outputs. It would be wrong to say that a function that doubles numbers is the same as a function that squares numbers, even though they have the same types and quantity of inputs and outputs. It would also be wrong to say that a function that computes double of numbers by means of multiplication is different from a function that computes double of numbers by means of addition. It would be feasible if the type system could infer the exact elements of the inputs and the exact elements of the output of a function, not only their types.
