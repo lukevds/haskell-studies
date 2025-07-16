@@ -157,3 +157,247 @@ If =f= is going to be applied to =f x=, the type of the output of =f= necessaril
 
 ** 5
 Function types encode the types of the inputs and outputs. It would be wrong to say that a function that doubles numbers is the same as a function that squares numbers, even though they have the same types and quantity of inputs and outputs. It would also be wrong to say that a function that computes double of numbers by means of multiplication is different from a function that computes double of numbers by means of addition. It would be feasible if the type system could infer the exact elements of the inputs and the exact elements of the output of a function, not only their types.
+
+* chapter 4
+** 1
+#+begin_src haskell :results output
+  halve ns = let n = length ns `div` 2 in (take n ns, drop n ns)
+
+  halve [1,2,3,4,5,6]
+
+  halve [1,2,3]
+
+  :type halve
+#+end_src
+
+#+RESULTS:
+: ([1,2,3],[4,5,6])
+: ([1],[2,3])
+: halve :: [a] -> ([a], [a])
+** 2
+*** a
+#+begin_src haskell :results output
+  third ns = head (tail (tail ns))
+
+  third [1,2,3]
+
+  :type third
+#+end_src
+
+#+RESULTS:
+: 3
+: third :: [a] -> a
+
+*** b
+#+begin_src haskell :results output
+  third ns = ns !! 2
+
+  third [4,5,6]
+
+  :type third
+#+end_src
+
+#+RESULTS:
+: 6
+: third :: [a] -> a
+
+*** c
+#+begin_src haskell :results output
+  third (f:(s:(t:xs))) = t
+
+  third [7,8,9]
+
+  :type third
+#+end_src
+
+#+RESULTS:
+: 9
+: third :: [a] -> a
+** 3
+*** a
+#+begin_src haskell :results output
+  safetail ns = if null ns then ns else tail ns
+
+  safetail []
+
+  safetail [1]
+
+  safetail [1,2]
+
+  :type safetail
+#+end_src
+
+#+RESULTS:
+: []
+: []
+: [2]
+: safetail :: [a] -> [a]
+
+*** b
+#+begin_src haskell :results output
+  :{
+  safetail ns | null ns   = ns
+              | otherwise = tail ns
+  :}
+
+  safetail []
+
+  safetail [1]
+
+  safetail [1,2]
+
+  :type safetail    
+#+end_src
+
+#+RESULTS:
+: []
+: []
+: [2]
+: safetail :: [a] -> [a]
+
+*** c
+#+begin_src haskell :results output
+  :{
+  safetail []     = []
+  safetail (x:xs) = xs
+  :}
+
+  safetail []
+
+  safetail [7]
+
+  safetail [7,8]
+
+  :type safetail    
+#+end_src
+
+#+RESULTS:
+: []
+: []
+: [8]
+: safetail :: [a] -> [a]
+** 4
+#+begin_src haskell
+  True  || True  = True
+  False || True  = True
+  True  || False = True
+  False || False = False
+#+end_src
+
+#+begin_src haskell
+  True || _    = True
+  _    || True = True
+  _    || _    = False
+#+end_src
+
+#+begin_src haskell
+  False ||     b = b
+  b     || False = b
+#+end_src
+
+#+begin_src haskell
+  b || c | b == False = c
+         | otherwise  = True
+#+end_src
+
+#+begin_src haskell :results output
+  :{
+  True  % True  = True
+  False % True  = True
+  True  % False = True
+  False % False = False
+  :}
+
+  True % False
+  False % False
+#+end_src
+
+#+RESULTS:
+: True
+: False
+** 5
+#+begin_src haskell :results output
+  a % b = if a then b else if b then a else False
+
+  True % True
+  True % False
+  False % True
+  False % False
+#+end_src
+
+#+RESULTS:
+: True
+: False
+: False
+: False
+** 6
+#+begin_src haskell :results output
+n  a % b = if a then b else False
+
+  True % True
+  True % False
+  False % True
+  False % False
+#+end_src
+
+#+RESULTS:
+: True
+: False
+: False
+: False
+** 7
+#+begin_src haskell :results output
+  :{
+  mult :: Int -> Int -> Int -> Int
+  mult = \x -> (\y -> (\z -> x*y*z))
+  :}
+
+  mult 2 3 4
+#+end_src
+
+#+RESULTS:
+: 24
+** 8
+#+begin_src haskell :results output
+  :{
+  decimalDigits n | n == 0    = 1
+                  | otherwise = floor (1 + (logBase 10 (abs n)))
+  :}
+
+  decimalDigits 1234
+  :type decimalDigits
+#+end_src
+
+#+RESULTS:
+: 4
+: decimalDigits
+:   :: (RealFrac a1, Integral a2, Floating a1) => a1 -> a2
+
+#+begin_src haskell :results output
+  luhnDouble n = let twon = (2 * n) in if twon > 9 then twon - 9 else twon
+
+  luhnDouble 3
+
+  luhnDouble 6
+#+end_src
+
+#+RESULTS:
+: 6
+: 3
+
+#+begin_src haskell :results output
+  luhnDouble n = let twon = (2 * n) in if twon > 9 then twon - 9 else twon
+    
+  luhn a b c d = sum [luhnDouble a, b, luhnDouble c, d] `mod` 10 == 0
+
+  luhn 1 7 8 4
+
+  luhn 4 7 8 3
+
+  :type luhn
+#+end_src
+
+#+RESULTS:
+: True
+: False
+: luhn :: Integral a => a -> a -> a -> a -> Bool
