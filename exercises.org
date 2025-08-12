@@ -751,3 +751,943 @@ Had to look merge sort on Wikipedia.
 
 #+RESULTS:
 : [10,101,12,103,14]
+
+* chapter 8
+
+** 1
+#+begin_src haskell :results output
+  data Nat = Zero | Succ Nat
+
+  :{
+  nat2int :: Nat -> Int
+  nat2int Zero     = 0
+  nat2int (Succ n) = 1 + nat2int n
+  :}
+
+  :{
+  int2nat :: Int -> Nat
+  int2nat 0 = Zero
+  int2nat n = Succ (int2nat (n-1))
+  :}
+
+  :{
+  add :: Nat -> Nat -> Nat
+  add Zero n = n
+  add (Succ m) n = Succ (add m n)
+  :}
+
+  :{
+  mult :: Nat -> Nat -> Nat
+  mult Zero        _           = Zero
+  mult _           Zero        = Zero
+  mult (Succ Zero) n           = n
+  mult m           (Succ Zero) = m
+  mult (Succ m) n              = add n (mult m n)
+  :}
+
+  nat2int (mult (Succ (Succ Zero)) (Succ (Succ (Succ Zero))))
+
+  nat2int (mult Zero (Succ (Succ (Succ Zero))))
+
+  nat2int (mult (Succ Zero) (Succ (Succ (Succ Zero))))
+
+  nat2int (mult (Succ (Succ (Succ Zero))) (Succ (Succ (Succ Zero))))
+#+end_src
+
+#+RESULTS:
+: 6
+: 0
+: 3
+: 9
+
+** 2
+#+begin_src haskell :results output
+  data Tree a = Leaf a | Node (Tree a) a (Tree a)
+
+  :{
+  t :: Tree Int
+  t = Node (Node (Leaf 1) 3 (Leaf 4)) 5
+           (Node (Leaf 6) 7 (Leaf 9))
+  :}
+
+  :{   
+  occurs :: Ord a => a -> Tree a -> Bool
+  occurs x (Leaf y)                         = compare x y == EQ
+  occurs x (Node l y r) | compare x y == EQ = True
+                        | compare x y == LT = occurs x l
+                        | otherwise         = occurs x r
+  :}
+
+  occurs 1 t
+  occurs 11 t
+#+end_src
+
+#+RESULTS:
+: True
+: False
+
+No idea.
+
+** 3
+#+name: balanced
+#+begin_src haskell :results output
+  data Tree a = Leaf a | Node (Tree a) (Tree a)
+
+  :{
+  numberOfLeaves :: Tree a -> Int
+  numberOfLeaves (Leaf _)   = 1
+  numberOfLeaves (Node l r) = numberOfLeaves l + numberOfLeaves r
+  :}
+
+  :{
+  balanced :: Tree a -> Bool
+  balanced (Leaf _)   = True
+  balanced (Node l r) =  abs (subtract nl nr) <= 1
+    where
+      nl = numberOfLeaves l
+      nr = numberOfLeaves r
+  :}
+#+end_src
+
+#+RESULTS: balanced
+
+#+begin_src haskell :results output :noweb yes
+  <<balanced>>
+  :{
+  shouldBeBalanced :: Tree Int
+  shouldBeBalanced = Node
+    (Node (Leaf 1) (Leaf 2))
+    (Node (Leaf 3) (Leaf 4))
+  :}
+
+  balanced shouldBeBalanced
+
+  :{
+  shouldNotBeBalanced :: Tree Int
+  shouldNotBeBalanced = Node
+    (Node (Leaf 1) (Node (Leaf 2) (Leaf 3)))
+    (Leaf 4)
+  :}
+
+  balanced shouldNotBeBalanced
+#+end_src
+
+#+RESULTS:
+: True
+: False
+
+** 4
+#+begin_src haskell :results output :noweb yes
+  <<balanced>>
+
+
+  :{
+  halve :: [a] -> ([a], [a])
+  halve lst = (take n lst, drop n lst)
+    where
+      n = (length lst) `div` 2
+  :}
+
+  :{
+  balance :: [a] -> Tree a
+  balance [x] = Leaf x
+  balance lst = Node (balance l) (balance r)
+    where
+      (l, r) = halve lst
+  :}
+
+  balanced $ balance [1,2,3,4,5]
+  balanced $ balance [1,2,3,4]
+#+end_src
+
+#+RESULTS:
+: True
+: True
+
+** 5
+#+name: folde
+#+begin_src haskell :results output
+  data Expr = Val Int | Add Expr Expr
+
+  :{
+  folde :: (Int -> a) -> (a -> a -> a) -> Expr -> a
+  folde f g (Val n) = f n
+  folde f g (Add m n) = g (folde f g m)
+                          (folde f g n)
+  :}
+#+end_src
+
+** 6
+#+begin_src haskell :results output :noweb yes
+  <<folde>>
+
+  :{
+  eval :: Expr -> Int
+  eval = folde id (+)
+  :}
+
+  :{
+  size :: Expr -> Int
+  size = folde (\x -> 1) (+)
+  :}
+
+  let exp = (Add (Val 1) (Add (Val 2) (Val 3)))
+
+  size exp
+  eval exp
+#+end_src
+
+#+RESULTS:
+: 3
+: 6
+
+** 7
+#+begin_src haskell :results output
+  :{
+  instance Eq a => Eq (Maybe a) where
+    (Just x) == (Just y) = x == y
+    _        == _        = False
+  :}
+#+end_src
+
+#+RESULTS:
+: <interactive>:4:10-29: error:
+:     Duplicate instance declarations:
+:       instance Eq a => Eq (Maybe a) -- Defined at <interactive>:4:10
+:       instance Eq a => Eq (Maybe a) -- Defined in ‘GHC.Maybe’
+
+#+begin_src haskell :results output
+  :{
+  instance Eq a => Eq [a] where
+    [] == []         = True
+    [] == _          = False
+    _  == []         = False
+    (x:xs) == (y:ys) = x == y && xs == ys
+  :}
+#+end_src
+
+#+RESULTS:
+: <interactive>:4:10-23: error:
+:     Duplicate instance declarations:
+:       instance Eq a => Eq [a] -- Defined at <interactive>:4:10
+:       instance Eq a => Eq [a] -- Defined in ‘GHC.Classes’
+
+** 8
+#+begin_src haskell :results output
+  eval s (Or p q)    = eval s p || eval s q
+  eval s (Equiv p q) = eval s p == eval
+#+end_src
+
+* chapter 9
+#+name: eval
+#+begin_src haskell :results output
+  data Op = Add | Sub | Mul | Div
+
+  :{
+  instance Show Op where
+    show Add = "+"
+    show Sub = "-"
+    show Mul = "*"
+    show Div = "/"
+  :}
+
+  :{
+  valid :: Op -> Int -> Int -> Bool
+  valid Add _ _ = True
+  valid Sub x y = x > y
+  valid Mul _ _ = True
+  valid Div x y = x `mod` y == 0
+  :}
+
+  :{
+  apply :: Op -> Int -> Int -> Int
+  apply Add x y = x + y
+  apply Sub x y = x - y
+  apply Mul x y = x * y
+  apply Div x y = x `div` y
+  :}
+
+  data Expr = Val Int | App Op Expr Expr
+
+  :{
+  instance Show Expr where
+    show (Val n)     = show n
+    show (App o l r) = brak l ++ show o ++ brak r
+      where
+        brak (Val n) = show n
+        brak e       = "(" ++ show e ++ ")"
+  :}
+
+  show (App Add (Val 1) (App Mul (Val 2) (Val 3)))
+
+  :{
+  values :: Expr -> [Int]
+  values (Val n) = [n]
+  values (App _ l r) = values l ++ values r
+  :}
+
+  :{
+  eval :: Expr -> [Int]
+  eval (Val n) = [n | n > 0]
+  eval (App o l r) = [apply o x y | x <- eval l,
+                                    y <- eval r,
+                                    valid o x y]
+  :}
+
+  eval (App Add (Val 2) (Val 3))
+  eval (App Sub (Val 2) (Val 3))
+#+end_src
+
+#+RESULTS:
+: 1+(2*3)
+: [5]
+: []
+
+#+name: choices
+#+begin_src haskell :results output
+  :{
+  subs :: [a] -> [[a]]
+  subs []     = [[]]
+  subs (x:xs) = yss ++ map (x:) yss
+                where yss = subs xs
+  :}
+
+  :{
+  interleave :: a -> [a] -> [[a]]
+  interleave x [] = [[x]]
+  interleave x (y:ys) = (x:y:ys) : map (y:) (interleave x ys)
+  :}
+
+  :{
+  perms :: [a] -> [[a]]
+  perms [] = [[]]
+  perms (x:xs) = concat (map (interleave x) (perms xs))
+  :}
+
+  subs [1,2,3]
+
+  :{
+  choices :: [a] -> [[a]]
+  choices = concat . map perms . subs
+  :}
+#+end_src
+
+#+RESULTS:
+: [[],[3],[2],[2,3],[1],[1,3],[1,2],[1,2,3]]
+
+#+begin_example
+subs [1,2,3]
+= (applying subs)
+yss ++ map (1:) yss
+where yss = subs [2,3]
+= (applying subs [2,3])
+yss ++ map (2:) yss
+where yss = subs [3]
+= (applying subs [3])
+yss ++ map (3:) yss
+where yss = subs []
+= (applying subs [])
+yss ++ map (3:) yss
+where yss = [[]]
+= (replacing yss for [[]])
+[[]] ++ map (3:) [[]]
+= (applying map)
+[[]] ++ [[3]]
+= (applying ++)
+[[],[3]]
+= (replacing yss for [[],[3]]
+[[],[3]] ++ map (2:) [[],[3]]
+= (applying map)
+[[],[3]] ++ [[2],[2,3]]
+= (applying ++)
+[[],[3],[2],[2,3]]
+= (replacing yss for [[],[3],[2],[2,3]])
+[[],[3],[2],[2,3]] ++ map (1:) [[],[3],[2],[2,3]]
+= (applying map)
+[[],[3],[2],[2,3]] ++ [[1],[1,3],[1,2],[1,2,3]]
+= (applying ++)
+[[],[3],[2],[2,3],[1],[1,3],[1,2],[1,2,3]]
+#+end_example
+
+#+begin_example
+interleave 1 [2,3,4]
+= (applying interleave)
+(1:2:[3,4]) : map (2:) (interleave 1 [3,4])
+= (applying interleave)
+(1:3:[4]) : map (3:) (interleave 1 [4])
+= (applying interleave)
+(1:4:[]) : map (4:) (interleave 1 [])
+= (applying interleave)
+(1:4:[]) : map (4:) [[1]]
+= (applying map)
+(1:4:[]) : [[4,1]]
+= (applying :)
+[[1,4],[4,2]]
+= (replacing (interleave 1 [4]) for [[1,4],[4,2]])
+(1:3:[4]) : map (3:) [[1,4],[4,2]]
+= (applying map)
+(1:3:[4]) : [[3,1,4],[3,4,2]]
+= (applying :)
+[[1,3,4],[3,1,4],[3,4,2]]
+= (replacing (interleave 1 [3,4]) for [[1,3,4],[3,1,4],[3,4,2]]
+[1,2,3,4] : map (2:) [[1,3,4],[3,1,4],[3,4,2]]
+= (applying map)
+[1,2,3,4] : [[2,1,3,4],[2,3,1,4],[2,3,4,2]]
+= (applying :)
+[[1,2,3,4],[2,1,3,4],[2,3,1,4],[2,3,4,2]]
+#+end_example
+
+#+begin_example
+perms [1,2,3]
+= (applying perms)
+perms (1:[2,3]) = concat (map (interleave 1) (perms [2,3]))
+= (applying perms)
+perms (2:[3]) = concat (map (interleave 2) (perms [3]))
+= (applying perms)
+perms (3:[]) = concat (map (interleave 3) (perms []))
+= (applying perms)
+perms (3:[]) = concat (map (interleave 3) [[]])
+= (applying map)
+perms (3:[]) = concat [[[3]]]
+= (applying concat)
+perms (3:[]) = [[3]]
+= (replacing (perms [3]) for [[3]])
+perms (2:[3]) = concat (map (interleave 2) [[3]])
+= (applying map)
+perms (2:[3]) = concat [[[2,3],[3,2]]]
+= (applying concat)
+perms (2:[3]) = [[2,3],[3,2]]
+= (replacinng (perms [2,3]) for [[2,3],[3,2]])
+perms (1:[2,3]) = concat (map (interleave 1) [[2,3],[3,2]])
+= (applying map)
+perms (1:[2,3]) = concat [[[1,2,3],[2,1,3],[2,3,1]],[[1,3,2],[3,1,2],[3,2,1]]]
+= (applying concat)
+perms (1:[2,3]) = [[1,2,3],[2,1,3],[2,3,1],[1,3,2],[3,1,2],[3,2,1]]
+#+end_example
+
+#+begin_example
+choices [1,2,3]
+= (applying choices)
+concat . map perms . subs [1,2,3]
+= (applying subs)
+concat . map perms [[],[3],[2],[2,3],[1],[1,3],[1,2],[1,2,3]]
+= (applying map)
+concat . [[[]],[[3]],[[2]],[[2,3],[3,2]],[[1]],[[1,3],[3,1]],[[1,2],[2,1]],[[1,2,3],[2,1,3],[2,3,1],[1,3,2],[3,1,2],[3,2,1]]]
+= (applying concat)
+[[],[3],[2],[2,3],[3,2],[1],[1,3],[3,1],[1,2],[2,1],[1,2,3],[2,1,3],[2,3,1],[1,3,2],[3,1,2],[3,2,1]]
+#+end_example
+
+#+name: solution
+#+begin_src haskell :results output :noweb yes
+  <<eval>>
+  <<choices>>
+  :{
+  solution :: Expr -> [Int] -> Int -> Bool
+  solution e ns n =
+    elem (values e) (choices ns) && eval e == [n]
+  :}
+
+  solution (App Mul (App Add (Val 1) (Val 50)) (App Sub (Val 25) (Val 10))) [1,3,7,10,25,50] 765
+#+end_src
+
+#+RESULTS: solution
+: 1+(2*3)
+: [5]
+: []
+: [[],[3],[2],[2,3],[1],[1,3],[1,2],[1,2,3]]
+: True
+
+#+RESULTS:
+: 1+(2*3)
+: [5]
+: []
+: [[],[3],[2],[2,3],[1],[1,3],[1,2],[1,2,3]]
+: True
+
+#+begin_src haskell :results output :noweb yes :tangle yes :comments noweb
+  <<solution>> 
+  :{
+  split :: [a] -> [([a],[a])]
+  split []     = []
+  split [_]    = []
+  split (x:xs) = ([x],xs) : [(x:ls,rs) | (ls,rs) <- split xs]
+  :}
+
+  :{
+  ops :: [Op]
+  ops = [Add,Sub,Mul,Div]
+  :}
+
+  :{
+  combine :: Expr -> Expr -> [Expr]
+  combine l r = [App o l r | o <- ops]
+  :}
+
+  :{
+  exprs :: [Int] -> [Expr]
+  exprs [] = []
+  exprs [n] = [Val n]
+  exprs ns = [e | (ls, rs) <- split ns,
+                  l        <- exprs ls,
+                  r        <- exprs rs,
+                  e        <- combine l r]
+  :}
+
+  :{
+  solutions :: [Int] -> Int -> [Expr]
+  solutions ns n =
+    [e | ns' <- choices ns, e <- exprs ns', eval e == [n]]
+  :}
+#+end_src
+
+#+RESULTS:
+: 1+(2*3)
+: [5]
+: []
+: [[],[3],[2],[2,3],[1],[1,3],[1,2],[1,2,3]]
+: True
+
+Performance testing was done by tangling this file, then changing the generated file according to the book.
+
+#+begin_src bash
+  ghc -O2 countdown.hs > /dev/null
+  (time (./countdown > /dev/null)) 2> countdown-time.txt
+  cat countdown-time.txt
+#+end_src
+
+#+RESULTS:
+|      |          |
+| real | 0m7.600s |
+| user | 0m7.579s |
+| sys  | 0m0.020s |
+
+#+begin_src bash
+  ghc -O2 countdown-v2.hs > /dev/null
+  (time (./countdown-v2 > /dev/null)) 2> countdown-v2-time.txt
+  cat countdown-v2-time.txt
+#+end_src
+
+#+RESULTS:
+|      |          |
+| real | 0m0.483s |
+| user | 0m0.462s |
+| sys  | 0m0.020s |
+
+#+begin_src bash
+  ghc -O2 countdown-v3.hs > /dev/null
+  (time (./countdown-v3 > /dev/null)) 2> countdown-v3-time.txt
+  cat countdown-v3-time.txt
+#+end_src
+
+#+RESULTS:
+|      |          |
+| real | 0m0.078s |
+| user | 0m0.074s |
+| sys  | 0m0.004s |
+
+#+begin_src bash
+  rm countdown{,-v2,-v3}{,.hi,.o}
+#+end_src
+
+#+RESULTS:
+
+** 1
+#+begin_src haskell :results output
+  :{
+  subs :: [a] -> [[a]]
+  subs []     = [[]]
+  subs (x:xs) = yss ++ map (x:) yss
+                where yss = subs xs
+  :}
+
+  :{
+  interleave :: a -> [a] -> [[a]]
+  interleave x [] = [[x]]
+  interleave x (y:ys) = (x:y:ys) : map (y:) (interleave x ys)
+  :}
+
+  :{
+  perms :: [a] -> [[a]]
+  perms [] = [[]]
+  perms (x:xs) = concat (map (interleave x) (perms xs))
+  :}
+
+  :{
+  choices :: [a] -> [[a]]
+  choices (x:xs) = [p | s <- subs (x:xs), p <- perms s]
+  :}
+
+  choices [1,2,3]
+#+end_src
+
+#+RESULTS:
+: [[],[3],[2],[2,3],[3,2],[1],[1,3],[3,1],[1,2],[2,1],[1,2,3],[2,1,3],[2,3,1],[1,3,2],[3,1,2],[3,2,1]]
+
+Reminder for list comprehensions: a generator can use values generated to its left.
+
+** 2
+List $a$ is chosen from list $b$ if the elements of $a$ are a subset of the elements of $b$, assuming that elements don't repeat in either $a$ or $b$.
+#+begin_src haskell :results output :noweb yes
+  <<choices>>
+  :{
+  removeFirst el [] = []
+  removeFirst el (x:xs) | el == x   = xs
+                        | otherwise = x : removeFirst el xs
+  :}
+
+  removeFirst 3 [1..10] ++ [3]
+
+  :{
+  isChoice :: Eq a => [a] -> [a] -> Bool
+  isChoice []     lst = True
+  isChoice (x:xs) lst = removeFirst x lst /= lst && isChoice xs lst
+  :}
+
+  isChoice [3,2] [1,2,3]
+  isChoice [3,4] [1,2,3]
+  isChoice [3,4] [1,2,3,4]
+  isChoice [1]   []
+
+  let _choices = choices [1,2,3]
+  all (\x -> isChoice x [1,2,3]) _choices
+#+end_src
+
+#+RESULTS:
+: [[],[3],[2],[2,3],[1],[1,3],[1,2],[1,2,3]]
+: [1,2,4,5,6,7,8,9,10,3]
+: True
+: False
+: True
+: False
+: True
+
+** 3
+Couldn't come up with a more elegant solution.
+#+begin_src haskell :results output :noweb yes
+  <<solution>>
+
+  :{
+  _split :: [a] -> [([a],[a])]
+  _split []     = []
+  _split [_]    = []
+  _split (x:xs) = ([x],xs) : [(x:ls,rs) | (ls,rs) <- _split xs]
+  -- split (x:xs) = ([],(x:xs)) : [(x:ls,rs) | (ls,rs) <- split xs]
+  -- split (x:xs) = [([],(x:xs))] ++ ([x],xs) : [(x:ls,rs) | (ls,rs) <- split xs]
+  :}
+
+  split lst = [([],lst)] ++ (_split lst) ++ [(lst,[])]
+
+  :{
+  ops :: [Op]
+  ops = [Add,Sub,Mul,Div]
+  :}
+
+  :{
+  combine :: Expr -> Expr -> [Expr]
+  combine l r = [App o l r | o <- ops]
+  :}
+
+  :{
+  exprs :: [Int] -> [Expr]
+  exprs [] = []
+  exprs [n] = [Val n]
+  exprs ns = [e | (ls, rs) <- split ns,
+                  l        <- exprs ls,
+                  r        <- exprs rs,
+                  e        <- combine l r]
+  :}
+
+  :{
+  solutions :: [Int] -> Int -> [Expr]
+  solutions ns n =
+    [e | ns' <- choices ns, e <- exprs ns', eval e == [n]]
+  :}
+
+  -- exprs [1,2]
+#+end_src
+
+The code block above, with the last line uncommented, does not output a result after a long time and uses a lot of memory, do not run it.
+
+#+begin_example
+exprs [1,2,3,4]
+= (applying exprs)
+[e | (ls, rs) <- split [1,2,3,4],
+     l        <- exprs ls,
+     r        <- exprs rs,
+     e        <- combine l r]
+= (applying split)
+[([],[1,2,3,4]),([1],[2,3,4]),([1,2],[3,4]),([1,2,3],[4]),([1,2,3,4],[])]
+= (values of ls)
+[[],[1],[1,2],[1,2,3],[1,2,3,4]]
+= (values of rs)
+[[1,2,3,4],[2,3,4],[3,4],[4],[]]
+= (applying exprs ls)
+[[], [Val 1],[App Add (Val 1) (Val 2) ...],[1,2,3],[1,2,3,4]]
+#+end_example
+
+#+begin_src haskell :results output
+[(i,j) | i <- [[],[1],[2,3],[4,5,6]], j <- [[4,5,6],[2,3],[1],[]]]
+#+end_src
+
+#+RESULTS:
+: [([],[4,5,6]),([],[2,3]),([],[1]),([],[]),([1],[4,5,6]),([1],[2,3]),([1],[1]),([1],[]),([2,3],[4,5,6]),([2,3],[2,3]),([2,3],[1]),([2,3],[]),([4,5,6],[4,5,6]),([4,5,6],[2,3]),([4,5,6],[1]),([4,5,6],[])]
+
+#+begin_src haskell :results output :noweb yes
+  <<solution>>
+  :{
+  ops :: [Op]
+  ops = [Add,Sub,Mul,Div]
+  :}
+
+  :{
+  combine :: Expr -> Expr -> [Expr]
+  combine l r = [App o l r | o <- ops]
+  :}
+
+  [e | l <- [(Val 1)], r <- [(Val 2)], e <- combine l r]
+  [e | l <- [(Val 1)], r <- [(Val 2), (Val 3)], e <- combine l r]
+  [e | l <- [(Val 1)], r <- [(Val 2), []], e <- combine l r]
+#+end_src
+
+#+RESULTS:
+#+begin_example
+1+(2*3)
+[5]
+[]
+[[],[3],[2],[2,3],[1],[1,3],[1,2],[1,2,3]]
+True
+[1+2,1-2,1*2,1/2]
+[1+2,1-2,1*2,1/2,1+3,1-3,1*3,1/3]
+<interactive>:102:37-38: error:
+    • Couldn't match expected type ‘Expr’ with actual type ‘[a0]’
+    • In the expression: []
+      In the expression: [(Val 2), []]
+      In a stmt of a list comprehension: r <- [(Val 2), []]
+#+end_example
+
+#+begin_src haskell :results output :noweb yes
+  <<solution>>
+  :{
+  _split :: [a] -> [([a],[a])]
+  _split []     = []
+  _split [_]    = []
+  _split (x:xs) = ([x],xs) : [(x:ls,rs) | (ls,rs) <- _split xs]
+  -- split (x:xs) = ([],(x:xs)) : [(x:ls,rs) | (ls,rs) <- split xs]
+  -- split (x:xs) = [([],(x:xs))] ++ ([x],xs) : [(x:ls,rs) | (ls,rs) <- split xs]
+  :}
+
+  split lst = [([],lst)] ++ (_split lst) ++ [(lst,[])]
+
+  :{
+  ops :: [Op]
+  ops = [Add,Sub,Mul,Div]
+  :}
+
+  :{
+  combine :: Expr -> Expr -> [Expr]
+  combine l r = [App o l r | o <- ops]
+  :}
+
+  :{
+  exprs :: [Int] -> [Expr]
+  -- exprs [] = []
+  exprs [n] = [Val n]
+  exprs ns = [e | (ls, rs) <- split ns,
+                  l        <- exprs ls,
+                  r        <- exprs rs,
+                  e        <- combine l r]
+  :}
+
+  :{
+  solutions :: [Int] -> Int -> [Expr]
+  solutions ns n =
+    [e | ns' <- choices ns, e <- exprs ns', eval e == [n]]
+  :}
+
+  exprs [1,2]
+#+end_src
+
+#+RESULTS:
+: 1+(2*3)
+: [5]
+: []
+: [[],[3],[2],[2,3],[1],[1,3],[1,2],[1,2,3]]
+: True
+: *** Exception: stack overflow
+
+#+begin_src haskell :results output :noweb yes
+  <<solution>>
+  :{
+  split :: [a] -> [([a],[a])]
+  split []     = []
+  split [_]    = []
+  split (x:xs) = ([x],xs) : [(x:ls,rs) | (ls,rs) <- split xs]
+  :}
+
+  :{
+  ops :: [Op]
+  ops = [Add,Sub,Mul,Div]
+  :}
+
+  :{
+  combine :: Expr -> Expr -> [Expr]
+  combine l r = [App o l r | o <- ops]
+  :}
+
+  :{
+  exprs :: [Int] -> [Expr]
+  -- exprs [] = []
+  exprs [n] = [Val n]
+  exprs ns = [e | (ls, rs) <- split ns,
+                  l        <- exprs ls,
+                  r        <- exprs rs,
+                  e        <- combine l r]
+  :}
+
+  :{
+  solutions :: [Int] -> Int -> [Expr]
+  solutions ns n =
+    [e | ns' <- choices ns, e <- exprs ns', eval e == [n]]
+  :}
+
+  exprs [1,2,3]
+#+end_src
+
+#+RESULTS:
+: 1+(2*3)
+: [5]
+: []
+: [[],[3],[2],[2,3],[1],[1,3],[1,2],[1,2,3]]
+: True
+: [1+(2+3),1-(2+3),1*(2+3),1/(2+3),1+(2-3),1-(2-3),1*(2-3),1/(2-3),1+(2*3),1-(2*3),1*(2*3),1/(2*3),1+(2/3),1-(2/3),1*(2/3),1/(2/3),(1+2)+3,(1+2)-3,(1+2)*3,(1+2)/3,(1-2)+3,(1-2)-3,(1-2)*3,(1-2)/3,(1*2)+3,(1*2)-3,(1*2)*3,(1*2)/3,(1/2)+3,(1/2)-3,(1/2)*3,(1/2)/3]
+
+
+
+The function =split= modified to return pairs containing the empty list wouldn't fit with the other functions since =combine= expects arguments of the type =Expr= and =exprs= cannot output a non-empty list if its input is the empty list. I don't understand why =exprs= does not apply =combine= to the empty list and throws an error before running out of stack memory. Conceptually, I cannot make sense of =split= returning the empty list because then =combine= would return incomplete expressions. One way where these functions could be remodelled to fit an unknown number in an exression is to curry the function that generates expressions, in other words, it would receive one number as input and return another function that receives another number as input and outputs the list of expressions.
+
+** 4
+#+begin_src haskell :results output :noweb yes
+  <<eval>>
+  <<choices>>
+  :{
+  split :: [a] -> [([a],[a])]
+  split []     = []
+  split [_]    = []
+  split (x:xs) = ([x],xs) : [(x:ls,rs) | (ls,rs) <- split xs]
+  :}
+
+  :{
+  ops :: [Op]
+  ops = [Add,Sub,Mul,Div]
+  :}
+
+  :{
+  combine :: Expr -> Expr -> [Expr]
+  combine l r = [App o l r | o <- ops]
+  :}
+
+  :{
+  exprs :: [Int] -> [Expr]
+  exprs [] = []
+  exprs [n] = [Val n]
+  exprs ns = [e | (ls, rs) <- split ns,
+                  l        <- exprs ls,
+                  r        <- exprs rs,
+                  e        <- combine l r]
+  :}
+
+  allExpressions = concat (map exprs (choices [1,3,7,10,25,50]))
+  "number of possible expressions: " ++ show (length allExpressions)
+  validExpressions = filter (\x -> x /= []) (map eval allExpressions)
+  "number of valid expressions: " ++ show (length validExpressions)
+#+end_src
+
+#+RESULTS:
+: 1+(2*3)
+: [5]
+: []
+: [[],[3],[2],[2,3],[1],[1,3],[1,2],[1,2,3]]
+: number of possible expressions: 33665406
+: number of valid expressions: 4672540
+
+* chapter 10
+** 1
+#+begin_src haskell :compile yes :results output
+  myPutStr lst = sequence_ [putChar x | x <- lst]
+
+  main = myPutStr "Hello, World!"
+#+end_src
+
+#+RESULTS:
+: Hello, World!
+** 2
+#+begin_src haskell :compile yes :results output
+  type Board = [Int]
+
+  putBoardRow :: Int -> Int -> IO ()
+  putBoardRow x y = putStrLn ((show x) ++ ": " ++ (replicate y '*'))
+
+  _putBoard :: Int -> Board -> IO ()
+  _putBoard n [x]    = putBoardRow n x
+  _putBoard n (x:xs) = do putBoardRow n x
+                          _putBoard (n + 1) xs
+
+  putBoard :: Board -> IO ()
+  putBoard lst = _putBoard 1 lst
+
+  main = do putBoard (reverse [1..10])
+            putBoard [1..10]
+#+end_src
+
+#+RESULTS:
+#+begin_example
+1: **********
+2: *********
+3: ********
+4: *******
+5: ******
+6: *****
+7: ****
+8: ***
+9: **
+10: *
+1: *
+2: **
+3: ***
+4: ****
+5: *****
+6: ******
+7: *******
+8: ********
+9: *********
+10: **********
+#+end_example
+** 3
+#+begin_src haskell :compile yes :results output
+  type Board = [Int]
+
+  putBoard :: Board -> IO ()
+  putBoard b = sequence_ [putStrLn ((show x) ++ ": " ++ (replicate y '*')) | (x, y) <- zip [1..] b]
+
+  main = putBoard (reverse [1..10])
+#+end_src
+
+#+RESULTS:
+#+begin_example
+1: **********
+2: *********
+3: ********
+4: *******
+5: ******
+6: *****
+7: ****
+8: ***
+9: **
+10: *
+#+end_example
+** 4
+[[file:adder.hs]]
+** 5
+[[file:adder-v2.hs]]
+** 6
+[[file:readLine.hs]]
