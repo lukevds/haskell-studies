@@ -1563,7 +1563,7 @@ True
 
 
 
-The function =split= modified to return pairs containing the empty list wouldn't fit with the other functions since =combine= expects arguments of the type =Expr= and =exprs= cannot output a non-empty list if its input is the empty list. I don't understand why =exprs= does not apply =combine= to the empty list and throws an error before running out of stack memory. Conceptually, I cannot make sense of =split= returning the empty list because then =combine= would return incomplete expressions. One way where these functions could be remodelled to fit an unknown number in an exression is to curry the function that generates expressions, in other words, it would receive one number as input and return another function that receives another number as input and outputs the list of expressions.
+The function =split= modified to return pairs containing the empty list wouldn't fit with the other functions since =combine= expects arguments of the type =Expr= and =exprs= cannot output a non-empty list if its input is the empty list. I don't understand why =exprs= does not apply =combine= to the empty list and throws an error before running out of stack memory. Conceptually, I cannot make sense of =split= returning the empty list because then =combine= would return incomplete expressions. =combine= working with incomplete expressions is not necessary in our case because the game requires a predetermined list of numbers, but it could be useful for generalizing our program.
 
 ** 4
 #+begin_src haskell :results output :noweb yes
