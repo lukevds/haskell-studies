@@ -1691,3 +1691,14 @@ The function =split= modified to return pairs containing the empty list wouldn't
 [[file:adder-v2.hs]]
 ** 6
 [[file:readLine.hs]]
+
+* chapter 11
+** 1
+[[file:tictactoe-v3.hs]]
+** 2
+[[file:tictactoe-v4.hs]]
+You can quickly see that the computer chooses different positions by playing positions 0 then 8.
+** 3
+[[file:tictactoe-v6.hs]]
+This AI is dumb. I tried to write a version that checks if a tree can lead to victory, but I couldn't get it to compile:
+[[file:tictactoe-v5.hs]]
