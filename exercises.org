@@ -1702,3 +1702,378 @@ You can quickly see that the computer chooses different positions by playing pos
 [[file:tictactoe-v6.hs]]
 This AI is dumb. I tried to write a version that checks if a tree can lead to victory, but I couldn't get it to compile:
 [[file:tictactoe-v5.hs]]
+* chapter 12
+Functors: class of types that support mapping. Mapping is applying a function to every element of a data structure.
+
+#+begin_src haskell :results output
+  :{
+  data Tree a = Leaf a | Node (Tree a) (Tree a)
+                deriving Show
+  :}
+
+  :{
+  instance Functor Tree where
+    fmap g (Leaf x)   = (Leaf (g x))
+    fmap g (Node l r) = (Node (fmap g l) (fmap g r))
+  :}
+
+  fmap (1+) (Node (Leaf 1) (Leaf 2))
+  fmap length (Node (Leaf "abcd") (Leaf "xyz"))
+
+#+end_src
+
+#+RESULTS:
+: Node (Leaf 2) (Leaf 3)
+: Node (Leaf 4) (Leaf 3)
+
+#+begin_example
+instance Functor IO where
+  -- fmap :: (a -> b) -> IO a -> IO b
+  fmap g mx = do {x <- mx; return (g x)}
+#+end_example
+First, the IO operation is done and its result is stored in =x=. Then =g= is applied to =x= and the result is wrapped with the type =IO= with =return=
+
+#+begin_example
+fmap show (return True)
+#+end_example
+=fmap= is applied to =show=, then =True= is wrapped inside a =IO= (?).
+
+#+begin_src haskell :results output
+  fmap show (Just 3)
+  show (Just 3)
+#+end_src
+
+#+RESULTS:
+: Just "3"
+: Just 3
+
+#+begin_example
+ghci> fmap show (Just 3)
+Just "3"
+ghci> show (Just 3)
+"Just 3"
+#+end_example
+
+#+begin_example
+getStr :: String -> IO String
+getStr x = do {y <- getChar; if y == '\n' then (return x) else (getStr (x ++ [y]))}
+#+end_example
+
+#+RESULTS:
+: Cons 3 (Cons 2 Nil)
+: Cons 2 (Cons 1 Nil)
+: Cons False (Cons True Nil)
+: Cons True (Cons False Nil)
+
+Applicatives generalize functors to functions with any number of arguments.
+
+#+begin_example
+pure (+1) <*> Just 1
+Just (+1) <*> Just 1
+fmap (+1) Just 1
+Just ((+1) 1)
+Just 2
+#+end_example
+
+#+begin_example
+pure (+) <*> Just 1 <*> Just 2
+Just (+) <*> Just 1 <*> Just 2
+fmap (+) (Just 1) <*> Just 2
+Just (1+) <*> Just 2
+fmap (1+) (Just 2)
+Just (1+2)
+Just 3
+#+end_example
+
+#+begin_example
+pure (+) <*> Nothing <*> Just 2
+Just (+) <*> Nothing <*> Just 2
+fmap (+) Nothing <*> Just 2
+Nothing <*> Just 2
+Nothing
+#+end_example
+
+=[a]= can be viewed as a generalization of =Maybe a= that permits multiple results in the case of success. The empty list is a failure and a non-empty list is the list of all possible ways in which a result may succeed.
+
+#+begin_example
+
+x <*> (y <*> z) = (pure (.) <*> x <*> y) <*> z
+#+end_example
+
+#+begin_example
+pure id <*> x = x
+
+pure :: a -> f a
+id :: a -> a
+<*> :: f (a -> b) -> f a -> f b
+x :: f a
+
+pure id :: f (a -> a)
+pure id <*> :: f a -> f b
+pure id <*> x :: f b
+#+end_example
+
+#+begin_example
+pure (g x) = pure g <*> pure x
+
+pure :: a -> f a
+g :: a -> b
+x :: a
+<*> :: f (a -> b) -> f a -> f b
+
+pure g :: f (a -> b)
+pure x :: f a
+pure g <*> :: f a -> f b
+pure g <*> pure x :: f b
+
+g x :: b
+pure (g x) :: f b
+#+end_example
+
+#+begin_example
+x <*> pure y = pure (\g -> g y) <*> x
+
+x :: f (a -> b)
+<*> :: f (a -> b) -> f a -> f b
+pure :: a -> f a
+y :: a
+
+x <*> :: f a -> f b
+pure y :: f a
+x <*> pure y :: f b
+
+(\g -> g y) :: ((c -> b) -> b)
+pure (\g -> g y) :: f ((c -> b) -> b)
+pure (\g -> g y) <*> :: f (c -> b) -> f b
+pure (\g -> g y) <*> x :: f b
+x :: f (c -> b)
+a :: c -> b
+#+end_example
+
+#+begin_src haskell :results output :compile yes
+  type State = Int
+
+  newtype ST a = S (State -> (a,State))
+
+  app :: ST a -> State -> (a,State)
+  app (S st) x = st x
+
+  instance Functor ST where
+    fmap g st = S (\s -> let (x,s') = app st s in (g x, s'))
+
+  instance Applicative ST where
+    pure x = S (\s -> (x,s))
+    stf <*> stx = S (\s ->
+      let (f,s')  = app stf s
+          (x,s'') = app stx s' in (f x, s''))
+
+  instance Monad ST where
+    st >>= f = S (\s -> let (x,s') = app st s in app (f x) s')
+
+  data Tree a = Leaf a | Node (Tree a) (Tree a)
+                deriving Show
+
+  tree :: Tree Char
+  tree = Node (Node (Leaf 'a') (Leaf 'b')) (Leaf 'c')
+
+  rlabel :: Tree a -> Int -> (Tree Int, Int)
+  rlabel (Leaf _)   n = (Leaf n, n+1)
+  rlabel (Node l r) n = (Node l' r', n'')
+    where
+      (l',n')  = rlabel l n
+      (r',n'') = rlabel r n'
+
+
+  fresh :: ST Int
+  fresh = S (\n -> (n,n+1))
+
+  alabel :: Tree a -> ST (Tree Int)
+  alabel (Leaf _)   = Leaf <$> fresh
+  alabel (Node l r) = Node <$> alabel l <*> alabel r
+
+  mlabel :: Tree a -> ST (Tree Int)
+  mlabel (Leaf _)   = do n <- fresh
+                         return (Leaf n)
+  mlabel (Node l r) = do l' <- mlabel l
+                         r' <- mlabel r
+                         return (Node l' r')
+
+
+  main = do putStr "rlabel: "
+            putStrLn (show (rlabel tree 0))
+            putStr "alabel: "
+            putStrLn (show (app (alabel tree) 0))
+            putStr "mlabel: "
+            putStrLn (show (app (mlabel tree) 0))
+#+end_src
+
+#+RESULTS:
+: rlabel: (Node (Node (Leaf 0) (Leaf 1)) (Leaf 2),3)
+: alabel: (Node (Node (Leaf 0) (Leaf 1)) (Leaf 2),3)
+: mlabel: (Node (Node (Leaf 0) (Leaf 1)) (Leaf 2),3)
+
+#+begin_example
+(rlabel tree 0)
+
+(Node l' r', n'')
+(l',n')  = rlabel (Node (Leaf 'a') (Leaf 'b')) 0
+(r',n'') = rlabel (Leaf 'c') n'
+
+(Node l' r', n'')
+(l',n')  = rlabel (Leaf 'a') 0
+(r',n'') = rlabel (Leaf 'b') n'
+
+(Leaf 'a') 0 = (Leaf 0, 1)
+
+(Node l' r', n'')
+(Leaf 0,1)     = rlabel (Leaf 'a') 0
+(r'    ,n'')   = rlabel (Leaf 'b') 1
+
+(Leaf 'b') 1 = (Leaf 1, 2)
+
+(Node l' r', n'')
+(Leaf 0,1) = rlabel (Leaf 'a') 0
+(Leaf 1,2) = rlabel (Leaf 'b') 1
+((Node (Leaf 0) (Leaf 1)),2)
+
+(Node l' r', n'')
+((Node (Leaf 0) (Leaf 1)),2)  = ((Node (Leaf 0) (Leaf 1)),2)
+(r',n'') = rlabel (Leaf 'c') 2
+
+(Leaf 'c') 2 = ((Leaf 2),3)
+
+(Node l' r', n'')
+((Node (Leaf 0) (Leaf 1)),2)  = ((Node (Leaf 0) (Leaf 1)),2)
+(r',n'') = rlabel (Leaf 'c') 2
+
+(Leaf 'c') 2 = ((Leaf 2), 3)
+
+(Node l' r', n'')
+((Node (Leaf 0) (Leaf 1)),2)  = ((Node (Leaf 0) (Leaf 1)),2)
+((Leaf 2),3)                  = ((Leaf 2), 3)
+
+(Node (Node (Leaf 0) (Leaf 1)) (Leaf 2), 3)
+#+end_example
+
+#+begin_example
+(app (alabel tree) 0)
+
+(alabel Node (Node (Leaf 'a') (Leaf 'b')) (Leaf 'c'))
+
+Node <$> alabel (Node (Leaf 'a') (Leaf 'b')) <*> alabel (Leaf 'c')
+pure Node <*> alabel (Node (Leaf 'a') (Leaf 'b')) <*> alabel (Leaf 'c')
+S (\s -> (Node,s)) <*> alabel (Node (Leaf 'a') (Leaf 'b')) <*> alabel (Leaf 'c')
+
+Node <$> alabel (Leaf 'a') <*> alabel (Leaf 'b')
+S (\p -> (Node,p) <*> alabel (Leaf 'a') <*> alabel (Leaf 'b'))
+
+alabel (Leaf 'a')
+Leaf <$> fresh
+S (\q -> (Leaf,q)) <*> fresh
+S (\q -> (Leaf,q)) <*> S (\n -> (n, n+1))
+S (\a ->
+    let (f,a')  = app S (\q -> (Leaf,q)) a
+    let (x,a'') = app fresh              a'
+      in (f x,a''))
+app S (\q -> (Leaf,q)) a = (Leaf,a)
+app S (\n -> (n,n+1))  a = (a,a+1)
+S (\a -> (Leaf a,a+1))
+
+S (\p -> (Node,p)) <*> S (\a -> (Leaf a,a+1))
+S (\a ->
+    let (f,a')  = app S (\p -> (Node,p)) a
+    let (x,a'') = app S (\b -> (Leaf b,b+1)) a'
+      in (f x,a''))
+app S (\p -> (Node,p)) a = (Node,a)
+app S (\b -> (Leaf b,b+1))) a = (Leaf a,a+1)
+S (\a -> ((Node (Leaf a)),a+1))
+
+S (\a -> ((Node (Leaf a)),a+1)) <*> S (\a -> (Leaf a,a+1))
+S (\c ->
+    let (f,c')  = app S (\a -> ((Node (Leaf a)),a+1)) c
+    let (x,c'') = app S (\a -> (Leaf a,a+1))          c'
+      in (f x,c''))
+app S (\a -> ((Node (Leaf a)),a+1)) c = ((Node (Leaf c)),c+1)
+app S (\a -> (Leaf a,a+1)) (c+1) = (Leaf c+1,c+1+1)
+S (\c -> ((Node (Leaf c)) (Leaf c+1),c+2))
+S (\c -> (Node (Leaf c) (Leaf c+1),c+2))
+
+S (\c -> (Node (Leaf c) (Leaf c+1),c+2)) <*> S (\a -> (Leaf a,a+1))
+S (\s -> ((Node (Node (Leaf s) (Leaf s+1)) (Leaf s+2)),s+3))
+#+end_example
+** 1
+#+begin_src haskell :results output
+  :{
+  data Tree a = Leaf | Node (Tree a) a (Tree a)
+                deriving Show
+  :}
+
+  :{
+  instance Functor Tree where
+    -- fmap :: (a -> b) -> Tree a -> Tree b
+    fmap _ Leaf         = Leaf
+    fmap f (Node l m r) = Node (fmap f l) (f m) (fmap f r)
+  :}
+
+  fmap (2^) (Node (Node Leaf 1 Leaf) 2 (Node Leaf 3 Leaf))
+#+end_src
+
+#+RESULTS:
+: Node (Node Leaf 2 Leaf) 4 (Node Leaf 8 Leaf)
+** 2
+#+begin_src haskell :results output
+  :{
+  instance Functor ((->) a) where
+    -- fmap :: (a -> b) -> ((->) a) -> ((->) b)
+    fmap = 
+  :}
+#+end_src
+
+#+RESULTS:
+: <interactive>:4:10-25: error:
+:     Duplicate instance declarations:
+:       instance Functor ((->) a) -- Defined at <interactive>:4:10
+:       instance Functor ((->) r) -- Defined in ‘GHC.Base’
+** 3
+** 4
+#+begin_src haskell :results output
+  newtype ZipList a = Z [a] deriving Show
+
+  :{
+  instance Functor ZipList where
+    -- fmap :: (a -> b) -> ZipList a -> ZipList b
+    fmap g (Z xs) = (Z (map g xs)) : (fmap g (Z xs))
+  :}
+
+  -- :{
+  -- instance Applicative ZipList where
+    -- pure :: a -> ZipList a
+    -- pure x = Z x
+
+    -- <*> :: ZipList (a -> b) -> ZipList a -> ZipList b
+    -- (Z gs) <*> (Z xs) = 
+  -- :}
+#+end_src
+
+#+RESULTS:
+#+begin_example
+<interactive>:8:19-50: error:
+    • Couldn't match expected type: ZipList b
+                  with actual type: [ZipList b]
+    • In the expression: (Z (map g xs)) : (fmap g (Z xs))
+      In an equation for ‘fmap’:
+          fmap g (Z xs) = (Z (map g xs)) : (fmap g (Z xs))
+      In the instance declaration for ‘Functor ZipList’
+    • Relevant bindings include
+        g :: a -> b (bound at <interactive>:8:8)
+        fmap :: (a -> b) -> ZipList a -> ZipList b
+          (bound at <interactive>:8:3)
+
+<interactive>:8:45-48: error:
+    • Couldn't match type ‘ZipList’ with ‘[]’
+      Expected: [a]
+        Actual: ZipList a
+    • In the second argument of ‘fmap’, namely ‘(Z xs)’
+      In the second argument of ‘(:)’, namely ‘(fmap g (Z xs))’
+      In the expression: (Z (map g xs)) : (fmap g (Z xs))
+#+end_example
