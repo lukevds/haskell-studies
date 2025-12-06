@@ -2162,3 +2162,914 @@ S (\s -> ((Node (Node (Leaf s) (Leaf s+1)) (Leaf s+2)),s+3))
       In the second argument of ‘(:)’, namely ‘(fmap g (Z xs))’
       In the expression: (Z (map g xs)) : (fmap g (Z xs))
 #+end_example
+* chapter 13
+A Parser is a program that takes a input string and returns a tree that make syntactic structure of the string explicit. Making the structure explicit simplifies further processing.
+
+A type for parsers can be:
+#+begin_src haskell :eval never
+type Parser a = String -> [(a,String)]
+#+end_src
+It takes a type argument since different information can be represented by different types. It returns a list with a pair consisting of the processed data and the remaining characters of the input string. The list represent the possibility of failure or multiple results. Note that this type is similar to the type of state transformers. A parser can be viewed as a generalised form of state transformer.
+#+begin_src haskell :eval never
+State -> (a,State)
+#+end_src
+
+#+name: monadic-parser-init
+#+begin_src haskell :results output
+  import Control.Applicative
+  import Data.Char
+
+  newtype Parser a = P (String -> [(a,String)])
+
+  :{
+  parse :: Parser a -> String -> [(a,String)]
+  parse (P p) inp = p inp
+  :}
+
+  :{
+  item :: Parser Char
+  item = P (\inp -> case inp of
+                       []     -> []
+                       (x:xs) -> [(x,xs)])
+  :}
+
+  :{
+  instance Functor Parser where
+    -- fmap :: (a -> b) -> Parser a -> Parser b
+    fmap g p = P (\inp -> case parse p inp of
+                             []       -> []
+                             [(x,xs)] -> [(g x, xs)])
+  :}
+
+  :{
+  instance Applicative Parser where
+    -- pure :: a -> Parser a
+    pure x = P (\inp -> [(x,inp)])
+
+    -- <*> :: Parser (a -> b) -> Parser a -> Parser b
+    x <*> y = P (\inp -> case parse x inp of
+                           []       -> []
+                           [(g,gs)] -> parse (fmap g y) gs)
+  :}
+    
+  :{
+  three :: Parser (Char,Char)
+  three = pure g <*> item <*> item <*> item
+          where g x y z = (x,z)
+  :}
+
+  :{
+  instance Monad Parser where
+    -- (>>=) :: Parser a -> (a -> Parser b) -> Parser b
+    p >>= f = P (\inp -> case parse p inp of
+                           [] -> []
+                           [(x,xs)] -> parse (f x) xs)
+  :}
+
+
+  -- i tried the following, but it doesn't work because
+  -- then the right side of the equality would be of type
+  -- Parser (Parser b). note that the type 'Parser b'
+  -- refers to the whole right side of the equation, that's
+  -- what tripped me.
+  -- :{
+  -- instance Monad Parser where
+  --   -- (>>=) :: Parser a -> (a -> Parser b) -> Parser b
+  --   p >>= f = P (\inp -> case parse p inp of
+  --                          [] -> []
+  --                          [(x,xs)] -> f x)
+  -- :}
+
+  -- shown in another way:
+  -- P (\inp -> case parse p inp of
+  --              [] -> []
+  --              [(x,xs)] -> f x) :: Parser (Parser b)
+
+  -- P (\inp -> case parse p inp of
+  --              [] -> []
+  --              [(x,xs)] -> parse (f x) xs) :: Parser b
+
+  -- f x :: Parser b
+
+  :{
+  instance Alternative Parser where
+    -- empty :: Parser a
+    empty = P (\inp -> [])
+
+    -- (<|>) :: Parser a -> Parser a -> Parser a
+    p <|> q = P (\inp -> case parse p inp of
+                           [] -> parse q inp
+                           x  -> x)
+  :}
+
+  -- at first I thought:
+  -- p <|> q = P (\inp -> case parse p inp of
+  --                        [] -> q
+  --                        x  -> x)
+
+#+end_src
+
+#+RESULTS: monadic-parser-init
+
+
+#+begin_src haskell :results output :noweb yes
+  <<monadic-parser-init>>
+
+  parse item ""
+  parse item "abc"
+
+  parse (fmap (\x -> 1) item) "abc"
+  parse (fmap (\x -> 1) item) ""
+
+  parse (pure 1) "abc"
+
+  parse three "abcdef"
+  parse three "ab"
+  parse three "xyz"
+
+  parse empty "abc"
+
+  parse (empty <|> return 'd') "abc"
+#+end_src
+
+#+RESULTS:
+#+begin_example
+[]
+[('a',"bc")]
+[(1,"bc")]
+[]
+[(1,"abc")]
+[(('a','c'),"def")]
+[]
+[(('x','z'),"")]
+[]
+[('d',"abc")]
+#+end_example
+
+Alternative class.
+#+begin_src haskell :eval never
+  class Applicative f => Alternative f where
+    empty :: f a
+    (<|>) :: f a -> f a -> f a
+#+end_src
+=empty= represents an alternative that has failed. =<|>= is the chice operator.
+
+Laws:
+#+begin_example
+empty <|> x   = x
+x <|> empty   = x
+x <|> y <|> z = (x <|> y) <|> z
+#+end_example
+
+#+name: monadic-parser-primitives
+#+begin_src haskell :results output :noweb yes
+  <<monadic-parser-init>>
+
+  :{
+  sat :: (Char -> Bool) -> Parser Char
+  sat p = P (\inp -> case parse item inp of
+                [] -> []
+                [(x,xs)] -> if p x then [(x,xs)] else [])
+  :}
+  -- sat p = do x <- item
+  --            if p x then return x else empty
+
+  :{
+  digit :: Parser Char
+  digit = sat isDigit
+  :}
+
+  :{
+  lower :: Parser Char
+  lower = sat isLower
+  :}
+
+  :{
+  upper :: Parser Char
+  upper = sat isUpper
+  :}
+
+  :{
+  letter :: Parser Char
+  letter = sat isAlpha
+  :}
+
+  :{
+  alphanum :: Parser Char
+  alphanum = sat isAlphaNum
+  :}
+
+  :{
+  char :: Char -> Parser Char
+  char x = sat (== x)
+  :}
+
+  :{
+  string :: String -> Parser String
+  string []     = return []
+  string (x:xs) = char x    >>= \y ->
+                  string xs >>= \ys ->
+                  P (\inp ->  [((y:ys),inp)])
+  :}
+  -- string (x:xs) = do char x
+  --                    string xs
+  --                    return (x:xs)
+
+  :{
+  ident :: Parser String
+  ident = do x <- lower
+             xs <- many alphanum
+             return (x:xs)
+  :}
+
+  :{
+  nat :: Parser Int
+  nat = do xs <- some digit
+           return (read xs)
+  :}
+
+  :{
+  space :: Parser ()
+  space = do many (sat isSpace)
+             return ()
+  :}
+
+  :{
+  int :: Parser Int
+  int = do char '-'
+           n <- nat
+           return (-n)
+         <|> nat
+  :}
+
+  :{
+  token :: Parser a -> Parser a
+  -- token p = do space
+  --              v <- p
+  --              space
+  --              return v
+  token p = space >>= \_ ->
+            p >>= \v ->
+            space >>= \_ ->
+            return v
+  :}
+
+  :{
+  identifier :: Parser String
+  identifier = token ident
+  :}
+
+  :{
+  natural :: Parser Int
+  natural = token nat
+  :}
+
+  :{
+  integer :: Parser Int
+  integer = token int
+  :}
+
+  :{
+  symbol :: String -> Parser String
+  symbol xs = token (string xs)
+  :}
+
+  :{
+  nats :: Parser [Int]
+  nats = do symbol "["
+            n <- natural
+            ns <- many (do symbol ","
+                           natural)
+            symbol "]"
+            return (n:ns)
+  :}
+#+end_src
+
+#+RESULTS: monadic-parser-primitives
+
+#+begin_src haskell :results output :noweb yes
+  <<monadic-parser-primitives>>
+
+  parse (sat (\c -> c == 'x')) "xbc"
+
+  parse (char 'a') "abc"
+
+  parse (string "abc") "abcdef"
+  parse (string "abc") "xyzabcdef"
+
+  parse ident "abc def"
+
+  parse nat "123 abc"
+
+  parse space "   abc"
+
+  parse int "-123 abc"
+
+  parse space "abc"
+
+  parse (token (string "var")) "   var  xyz"
+
+  parse nats "[1,2,3] xyz"
+#+end_src
+
+#+RESULTS:
+#+begin_example
+[('x',"bc")]
+[('a',"bc")]
+[("abc","def")]
+[]
+[("abc"," def")]
+[(123," abc")]
+[((),"abc")]
+[(-123," abc")]
+[((),"abc")]
+[("var","xyz")]
+[([1,2,3],"xyz")]
+#+end_example
+
+#+name: monadic-parser-arithmetic
+#+begin_src haskell :results output :noweb yes
+  <<monadic-parser-primitives>>
+
+  :{
+  expr :: Parser Int
+  expr = do t <- term
+            do symbol "+"
+               e <- expr
+               return (t + e)
+             <|> return t
+
+  term :: Parser Int
+  term = do f <- factor
+            do symbol "*"
+               t <- term
+               return (f * t)
+             <|> return f
+
+  factor :: Parser Int
+  factor = do symbol "("
+              e <- expr
+              symbol ")"
+              return e
+            <|> natural
+  :}
+
+  :{
+  eval :: String -> Int
+  eval xs = case (parse expr xs) of
+              [(n,[])]  -> n
+              [(_,out)] -> error ("Unused input " ++ out)
+              []        -> error "Invalid input"
+  :}
+#+end_src
+
+#+RESULTS:
+
+#+begin_src haskell :results output :noweb yes
+  <<monadic-parser-arithmetic>>
+
+  eval "2*3+4"
+  eval "4+2*3"
+  eval "2*(3+4)"
+  eval "7"
+  eval "7!"
+
+#+end_src
+
+#+RESULTS:
+: 10
+: 10
+: 14
+: 7
+: *** Exception: Unused input !
+: CallStack (from HasCallStack):
+:   error, called at <interactive>:241:26 in interactive:Ghci28
+
+#+begin_src haskell :results output :noweb yes
+  <<monadic-parser-arithmetic>>
+
+  eval "one plus two"
+#+end_src
+
+#+RESULTS:
+: *** Exception: Invalid input
+: CallStack (from HasCallStack):
+:   error, called at <interactive>:242:26 in interactive:Ghci28
+
+#+name: screen-utilities
+#+begin_src haskell :results output
+  import System.IO
+
+  :{
+  type Pos = (Int,Int)
+
+  cls :: IO ()
+  cls = putStr "\ESC[2J"
+
+  writeat :: Pos -> String -> IO ()
+  writeat p xs = do goto p
+                    putStr xs
+
+  goto :: Pos -> IO ()
+  goto (x,y) = putStr ("\ESC[" ++ show y ++ ";" ++ show x ++ "H")
+
+
+  getCh :: IO Char
+  getCh = do hSetEcho stdin False
+             x <- getChar
+             hSetEcho stdin True
+             return x
+  :}
+#+end_src
+
+#+RESULTS: screen-utilities
+
+#+begin_src haskell :eval never :noweb yes :tangle calculator.hs 
+
+  <<screen-utilities>>
+
+  <<monadic-parser-arithmetic>>
+
+  :{
+  box :: [String]
+  box = ["+---------------+",
+         "|               |",
+         "+---+---+---+---+",
+         "| q | c | d | = |",
+         "+---+---+---+---+",
+         "| 1 | 2 | 3 | + |",
+         "+---+---+---+---+",
+         "| 4 | 5 | 6 | - |",
+         "+---+---+---+---+",
+         "| 7 | 8 | 9 | * |",
+         "+---+---+---+---+",
+         "| 0 | ( | ) | / |",
+         "+---+---+---+---+"]
+  :}
+
+  :{
+  buttons :: String
+  buttons = standard ++ extra
+            where
+              standard = "qcd=123+456-789*0()/"
+              extra    = "QCD \ESC\BS\DEL\n"
+  :}
+
+  :{
+  showbox :: IO ()
+  showbox = sequence_ [writeat (1,y) b | (y,b) <- zip [1..] box]
+  :}
+
+  :{
+  display :: String -> IO ()
+  display xs = do writeat (3,2) (replicate 13 ' ')
+                  writeat (3,2) (reverse (take 13 (reverse xs)))
+  :}
+
+  :{
+  calc :: String -> IO ()
+  calc xs = do display xs
+               c <- getCh
+               if elem c buttons then
+                 process c xs
+               else
+                 do beep
+                    calc xs
+
+  beep :: IO ()
+  beep = putStr "\BEL"
+
+  process :: Char -> String -> IO ()
+  process c xs | elem c "qQ\ESC"    = quit
+               | elem c "dD\BS\DEL" = delete xs
+               | elem c "=\n"       = eval xs
+               | elem c "cC"        = clear
+               | otherwise          = press c xs
+
+  quit :: IO ()
+  quit = goto (1,14)
+
+  delete :: String -> IO ()
+  delete [] = calc []
+  delete xs = calc (init xs)
+
+  eval :: String -> IO ()
+  eval xs = case parse expr xs of
+               [(n,[])] -> calc (show n)
+               _        -> do beep
+                              calc xs
+
+  clear :: IO ()
+  clear = calc []
+
+  press :: Char -> String -> IO ()
+  press c xs = calc (xs ++ [c])
+
+  run :: IO ()
+  run = do cls
+           showbox
+           clear
+  :}
+
+  run
+#+end_src
+
+To run the calculator, put the point on the block above, tangle with the key chord =C-u C-c C-v t= or =C-u M-x org-babel-tangle RET=, then run the script with:
+#+begin_src bash :eval never
+ghci -ghci-script calculator.hs
+#+end_src
+
+** 1
+#+begin_src haskell :results output :noweb yes
+  <<monadic-parser-primitives>>
+
+
+  :{
+  comment :: Parser ()
+  comment = do string "--"
+               many (sat (\c -> c /= '\n'))
+               sat (\c -> c == '\n')
+               return ()
+  :}
+
+  parse comment "-- abcde\n"
+  parse comment "xyz --"
+  parse comment "-- abcde"
+  parse comment "-- this is a comment\nthis should remain"
+  parse comment "--\n"
+  parse comment "--"
+#+end_src
+
+#+RESULTS:
+: [((),"")]
+: []
+: []
+: [((),"this should remain")]
+: [((),"")]
+: []
+
+** 2
+#+begin_example
+expr   ::= expr + expr | term
+term   ::= term * term | factor
+factor ::= ( expr ) | nat
+nat    ::= 0 | 1 | 2
+#+end_example
+
+#+begin_example
+                  expr
+                /-  | ---
+            /---    |    \---
+          --        +        \-
+         expr               term
+          |                   |
+         /|\                  |
+        / | \              factor
+       /  |  \                |
+      /   +   \               |
+    term     term            nat
+     |         |              |
+     |         |              |
+  factor     factor           4
+     |         |
+     |         |
+    nat       nat
+     |         |
+     |         |
+     2         3
+#+end_example
+
+#+begin_example
+           expr
+         /-  | ---
+     /---    |    \---
+   --        +        \-
+ term                expr
+   |                  |
+   |                 /|\
+factor              / | \
+   |               /  |  \
+   |              /   +   \
+  nat           term     term
+   |             |         |
+   |             |         |
+   2          factor     factor
+                 |         |
+                 |         |
+                nat       nat
+                 |         |
+                 |         |
+                 3         4
+#+end_example
+
+** 3
+#+begin_example
+expr ::= term + expr | term
+term ::= factor * term | factor
+#+end_example
+
+#+begin_example
+         expr
+         /|\
+       -/ | \-
+     -/   |   \
+    /     +    \
+  term        term
+   |           |
+   |           |
+   |           |
+factor       factor
+   |           |
+   |           |
+   |           |
+  nat         nat
+   |           |
+   |           |
+   |           |
+   2           3
+#+end_example
+
+#+begin_example
+      expr
+       |
+       |
+       |
+      term
+       |
+      /|\
+     / | \
+    /  |  \
+   /   *   \
+factor    term
+  |         |
+  |        /|\
+  |       / | \
+ nat     /  |  \
+  |     /   *   \
+  |  factor   factor
+  |    |         |
+  2    |         |
+       |         |
+      nat       nat
+       |         |
+       |         |
+       |         |
+       3         4
+#+end_example
+
+#+begin_example
+            expr
+             |
+            /|\
+           / | \
+          /  +  \
+        term    4
+         |       
+         |       
+      factor     
+        |        
+       /|\       
+      / | \      
+     /  |  \     
+    (   |  )     
+        |        
+      expr       
+       |         
+      /|\        
+     / | \       
+    /  |  \      
+   /   +   \     
+ term     term   
+  |         |    
+  |         |    
+factor    factor 
+  |         |    
+  |         |    
+ nat       nat   
+#+end_example
+
+** 4
+The final simplification saves information that would be lost otherwise, the whole string would be reprocessed.
+* chapter 14
+** Monoids
+In Mathematics, a monoid is a set together with an associative operator that combines two elements from the set, and an identity element for the operator. For example, the set of integers forms a monoid with the operator given by addition and the identity element by the value zero. In Haskell, the notion of a monoid is captured by the following built-in class declaration:
+#+begin_src haskell :eval never
+class Monoid a where
+  mempty :: a
+  mappend :: a -> a -> a
+  mconcat :: [a] -> a
+  mconcat = foldr mappend mempty
+#+end_src
+The two primitives in the Monoid class are required to satisfy the following identity and associativity laws:
+#+begin_src haskell :eval never
+mempty `mappend` x = x
+x `mappend` mempty = x
+x `mappend` (y `mappend` z) = (x `mappend` y) `mappend` z
+#+end_src
+A particular type may give rise to a monoid in a number of different ways. For example, the integers form a monoid under addition and under multiplication. However, multiple instance declarations of the same type are not allowed in Haskell. To circumvent this, wrapper types can be created:
+#+begin_src haskell :eval never
+newtype Sum a = Sum a
+  deriving (Eq, Ord, Show, Read)
+
+getSum :: Sum a -> a
+getSum (Sum x) = x
+
+instance Num a => Monoid (Sum a) where
+  -- mempty :: Sum a
+  mempty = Sum 0
+  -- mappend :: Sum a -> Sum a -> Sum a
+  Sum x `mappend` Sum y = Sum (x+y)
+#+end_src
+#+begin_src haskell :eval never
+newtype Product a = Product a
+  deriving (Eq, Ord, Show, Read)
+
+getProduct :: Product a -> a
+getProduct (Product x) = x
+
+instance Num a => Monoid (Product a) where
+  -- mempty :: Product a
+  mempty = Product 1
+  -- mappend :: Product a -> Product a -> Product a
+  Product x `mappend` Product y = Product (x*y)
+#+end_src
+** Foldables
+Foldables are types that wrap Monoids. In other words, Foldables wrap around values that can be combined into one value.
+#+begin_src haskell :eval never
+class Foldable t where
+  fold :: Monoid a => t a -> a
+  foldMap :: Monoid b => (a -> b) -> t a -> b
+  foldr :: (a -> b -> b) -> b -> t a -> b
+  foldl :: (a -> b -> a) -> a -> t b -> a
+#+end_src
+foldr combines values from the right to the left, and foldl combines values from the left to the right. For example:
+#+begin_example
+foldr (+) 0 [1,2,3] = 1+(2+(3+0))
+foldl (+) 0 [1,2,3] = (1+2)+3
+#+end_example
+The class also includes other useful functions:
+#+begin_src haskell :eval never
+null    :: t a -> Bool
+length  :: t a -> Int
+elem    :: Eq a => a -> t a -> Bool
+maximum :: Ord a => t a -> a
+minimum :: Ord a => t a -> a
+sum     :: Num a => t a -> a
+product :: Num a => t a -> a
+foldr1 :: (a -> a -> a) -> t a -> a
+foldl1 :: (a -> a -> a) -> t a -> a
+toList :: t a -> [a]
+#+end_src
+The function toList plays a special role in the declaration of Foldable, it can be used to provide default definitions for most other primitives:
+#+begin_src haskell :eval never
+foldr f v = foldr f v . toList
+foldl f v = foldl f v . toList
+foldr1 f  = foldr1 f . toList
+foldl1 f  = foldl1 f . toList
+null      = null . toList
+length    = length . toList
+elem x    = elem x . toList
+maximum   = maximum . toList
+minimum   = minimum . toList
+sum       = sum . toList
+product   = product . toList
+#+end_src
+The following default definitions establish important relationships between primitives of the class:
+#+begin_src haskell :eval never
+fold = foldMap id
+foldMap f = foldr (mappend . f) mempty
+toList = foldMap (\x -> [x])
+#+end_src
+An important beneﬁt of abstracting out the concept of foldable types is the ability to use the primitives in the Foldable class to deﬁne generic functions that can be used with any such type:
+#+begin_src haskell :eval never
+average :: Foldable t => t Int -> Int
+average ns = sum ns ‘div‘ length ns
+
+and :: Foldable t => t Bool -> Bool
+and = getAll . foldMap All
+
+or :: Foldable t => t Bool -> Bool
+or = getAny . foldMap Any
+
+all :: Foldable t => (a -> Bool) -> t a -> Bool
+all p = getAll . foldMap (All . p)
+
+any :: Foldable t => (a -> Bool) -> t a -> Bool
+any p = getAny . foldMap (Any . p)
+
+concat :: Foldable t => t [a] -> [a]
+concat = fold
+#+end_src
+** Traversables
+The traversable class generalizes the concept of applying a function over a list.
+#+begin_src haskell :eval never
+class (Functor t, Foldable t) => Traversable t where
+  traverse :: Applicative f => (a -> f b) -> t a -> f (t b)
+#+end_src
+That is, for a parameterised type t that is both functorial and foldable to be an instance of the class Traversable, it must support a traverse function of the speciﬁed type. The requirement that t is a functor reﬂects the fact that traversables generalise the idea of mapping, and are hence expected to support the fmap primitive. The requirement that t is foldable ensures that values in a traversable type can also be folded up if desired.
+Imagine that we have to map over a list, but the function may fail. We could write traverse as:
+#+begin_src haskell :eval never
+traverse :: (a -> Maybe b) -> [a] -> Maybe [b]
+traverse g []     = pure []
+traverse g (x:xs) = pure (:) <*> g x <*> traverse g xs
+#+end_src
+The class generalizes this to other functors and foldables.
+** Exercises
+*** 1
+#+begin_src haskell :eval never
+instance (Monoid a, Monoid b) => Monoid (a,b) where
+  -- mempty :: (a,b)
+  mempty = (mempty, mempty)
+  -- mappend :: (a,b) -> (a,b) -> (a,b)
+  (x1,y1) `mappend` (x2,y2) = (x1 `mappend` x2,
+                               y1 `mappend` y2)
+#+end_src
+*** 2
+#+begin_src haskell :eval never
+instance Monoid b => a -> b where
+  -- mempty :: ?
+  mempty = ?
+  -- mappend :: (a -> b) -> (a -> b) -> (a -> b)
+  f `mappend` g = ?
+#+end_src
+*** 3
+#+begin_src haskell :eval never
+instance Foldable Maybe where
+  -- fold :: Monoid a => Maybe a -> a
+  fold Nothing = mempty
+  fold Just x  = x
+
+  -- foldMap :: Monoid b => (a -> b) -> Maybe a -> b
+  foldMap g Nothing  = mempty
+  foldmap g (Just x) = g x
+
+  -- foldr :: (a -> b -> b) -> b -> Maybe a -> b
+  foldr g v Nothing  = v
+  foldr g v (Just x) = g x v
+
+  -- foldl :: (a -> b -> a) -> a -> Maybe b -> a
+  foldl g v Nothing  = v
+  foldl g v (Just x) = g v x
+#+end_src
+* chapter 15
+#+begin_src haskell :results output
+  :{
+  primes = let someNats   = [2..]
+               firstPrime = head someNats
+               restNats   = tail someNats
+           in
+             firstPrime : (filter (\x -> x `rem` firstPrime /= 0) restNats)
+  :}
+
+  take 10 primes
+#+end_src
+
+#+RESULTS:
+: [2,3,5,7,9,11,13,15,17,19]
+
+Reducible expression or redex: an expression of the form of a function applied to one or more arguments that can be reduced. Reducing redexes does not necessarily decrease the size of the expression.
+
+The function
+#+begin_example
+mult :: (Int,Int) -> Int
+mult (x,y) = x + y
+#+end_example
+in the expression
+#+begin_example
+mult (1+2,2+3)
+#+end_example
+contains three redexes:
+#+begin_example
+1. 1+2
+2. 2+3
+3. mult (1+2,2+3)
+#+end_example
+
+Reducing redexes within lambda expressions is prohibited is Haskell. The only operation that can be performed on a function is applying it to an argument. Once the function =\x -> 1 + 2= has been applied to an argument, evaluation of the resulting redex can proceed.
+
+Innermost redex: contains no other redex. Innermost evaluation: evaluation strategy that evaluates the innermost redexes first, choosing the leftmost redex if there is more than one innermost redex. This strategy ensures that arguments are always fully evaluated before functions are applied. In other words, arguments are passed *by value.*
+
+Outermost redex: is contained by no other redex. Outermost evaluation: evaluates outermost redex first, left to right. Arguments are passed *by name.*
+
+Strict functions: their arguments have to be applied before being passed to them.
+
+Call-by-value: innermost evaluation of redexes not within lambda expressions. Will produce the smallest number of evaluation steps. Call-by-name: outermost evaluation of redexes not within lambda expressions. Will always terminate evaluation if there is at least one way to terminate it.
+
+Sharing: a pointer to the result of evaluating an expression is used instead of the evaluation being repeated. It is important because with call-by-value evaluation arguments to functions can be repeated in their bodies, resulting in needless recomputation when not shared.
+
+Lazy evaluation: call-by-name + sharing.
+
+$! operator allows to apply functions strictly, ie evaluate function arguments before application. It can help manage space complexity.
+
+** Exercises
+*** 4
+#+begin_src haskell :results output
+  :{
+  fibs :: [Integer]
+  fibs = 0 : (1 : [x+y | (x,y) <- zip fibs (tail fibs)])
+  :}
+  take 55 fibs
+#+end_src
+
+#+RESULTS:
+: [0,1,1,2,3,5,8,13,21,34,55,89,144,233,377,610,987,1597,2584,4181,6765,10946,17711,28657,46368,75025,121393,196418,317811,514229,832040,1346269,2178309,3524578,5702887,9227465,14930352,24157817,39088169,63245986,102334155,165580141,267914296,433494437,701408733,1134903170,1836311903,2971215073,4807526976,7778742049,12586269025,20365011074,32951280099,53316291173,86267571272]
